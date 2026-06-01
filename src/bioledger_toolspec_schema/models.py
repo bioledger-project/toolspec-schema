@@ -126,6 +126,11 @@ class ExecutionSpec(BaseModel):
     parameters: dict[str, ToolParameter] = {}
     categories: list[str] = []
     status: SpecStatus = SpecStatus.DRAFT
+    # Provenance / attribution (optional)
+    homepage: str = ""  # tool homepage or docs URL
+    citation: str = ""  # how to cite (DOI / paper reference)
+    license: str = ""  # SPDX identifier, e.g. "MIT", "GPL-3.0-or-later"
+    contact: str = ""  # maintainer contact
 
     _v_inputs = field_validator("inputs", mode="before")(
         classmethod(lambda cls, v: _fill_names_from_keys(v))
@@ -166,6 +171,11 @@ class ExecutionSpecDraft(BaseModel):
     parameters: list[ToolParameter] = []
     categories: list[str] = []
     status: SpecStatus = SpecStatus.DRAFT
+    # Provenance / attribution (optional)
+    homepage: str = ""
+    citation: str = ""
+    license: str = ""
+    contact: str = ""
 
     def to_execution_spec(self) -> ExecutionSpec:
         return ExecutionSpec(
@@ -179,6 +189,10 @@ class ExecutionSpecDraft(BaseModel):
             parameters={p.name: p for p in self.parameters},
             categories=list(self.categories),
             status=self.status,
+            homepage=self.homepage,
+            citation=self.citation,
+            license=self.license,
+            contact=self.contact,
         )
 
     @classmethod
@@ -194,6 +208,10 @@ class ExecutionSpecDraft(BaseModel):
             parameters=list(spec.parameters.values()),
             categories=list(spec.categories),
             status=spec.status,
+            homepage=spec.homepage,
+            citation=spec.citation,
+            license=spec.license,
+            contact=spec.contact,
         )
 
 
