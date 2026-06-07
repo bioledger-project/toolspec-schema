@@ -1,9 +1,21 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+
+import httpx
+import yaml
 
 from .load import load_spec, save_spec
 from .models import ToolSpec
+
+logger = logging.getLogger(__name__)
+
+# Default raw content URL template for fetching spec.yaml from GitHub
+DEFAULT_RAW_URL_TEMPLATE = (
+    "https://raw.githubusercontent.com/bioledger-project/toolspec-library/"
+    "{ref}/specs/{path}/spec.yaml"
+)
 
 
 class ToolStore:
@@ -86,3 +98,39 @@ class ToolStore:
     def invalidate_cache(self) -> None:
         """Force cache refresh on next access."""
         self._cache.clear()
+
+    def import_from_library(
+        self,
+        path: str,
+        ref: str = "main",
+        raw_url_template: str = DEFAULT_RAW_URL_TEMPLATE,
+    ) -> ToolSpec:
+        """Fetch a tool spec from the remote library and save it locally.
+
+        Args:
+            path: Relative path within the library specs/ dir (e.g. "samtools/samtools-faidx").
+            ref: Git ref to pin (branch, tag, or commit SHA). Defaults to "main".
+            raw_url_template: URL template with {ref} and {path} placeholders.
+
+        Returns:
+            The imported ToolSpec (also saved to the local store).
+
+        Raises:
+            ValueError: If the remote spec cannot be fetched or parsed.
+        """
+        url = raw_url_template.format(ref=ref, path=path)
+        try:
+            resp = httpx.get(url, timeout=15, follow_redirects=True)
+            resp.raise_for_status()
+        except Exception as e:
+            raise ValueError(f"Failed to fetch spec from {url}: {e}") from e
+
+        try:
+            raw = yaml.safe_load(resp.text)
+            spec = ToolSpec.model_validate(raw)
+        except Exception as e:
+            raise ValueError(f"Failed to parse spec from {url}: {e}") from e
+
+        self.save(spec)
+        logger.info("Imported tool '%s' from %s (ref=%s)", spec.name, path, ref)
+        return spec
