@@ -33,7 +33,8 @@ If you just want to see a working example, look at
 ## Top-level structure
 
 ```yaml
-spec_version: "0.1"        # schema version, string, required
+spec_version: "0.1"        # schema format version — changed by schema maintainers only
+revision: "1"              # spec wrapper revision — bump when you edit the command/inputs/outputs
 execution:                 # ExecutionSpec, required
   ...
 interface:                 # InterfaceSpec, optional
@@ -41,6 +42,11 @@ interface:                 # InterfaceSpec, optional
 ```
 
 `execution` is the minimum viable tool — everything BioLedger needs to run it in a container and record the result. `interface` is pure UI metadata, ignored by the executor. See the [API Reference](reference.html) for every field on `ExecutionSpec`, `ToolInput`, `ToolOutput`, `ToolParameter`, and `InterfaceSpec`.
+
+**Three "version-like" fields:**
+- `spec_version` — the YAML schema format. Only changes when the parser/validator needs a migration (e.g. new required fields).
+- `revision` — the spec wrapper definition. Bump whenever you fix the command template, add an input, change an output pattern, etc. Independent of the upstream tool version.
+- `execution.version` — the **upstream tool's version** (samtools, GATK, etc.). Never change this unless the Docker image upgrades to a new tool release.
 
 ---
 

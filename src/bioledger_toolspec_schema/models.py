@@ -370,7 +370,14 @@ class ToolSpec(BaseModel):
     """Complete BioLedger tool specification = Execution + optional Interface."""
 
     spec_version: str = Field(
-        default=SPEC_VERSION, description="Schema version, used for migrations."
+        default=SPEC_VERSION, description="Schema format version, used for migrations."
+    )
+    revision: str = Field(
+        default="1",
+        description=(
+            "Spec definition revision. Bump when the wrapper "
+            "(command, inputs, outputs) changes, independent of the tool's own version."
+        ),
     )
     execution: ExecutionSpec = Field(description="The portable execution contract.")
     interface: InterfaceSpec | None = Field(

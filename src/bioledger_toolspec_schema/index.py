@@ -45,6 +45,7 @@ def build_index(specs_dir: Path) -> list[dict]:
             "name": name,
             "family": family,
             "version": execution.get("version", ""),
+            "revision": raw.get("revision", "1"),
             "description": execution.get("description", ""),
             "container": execution.get("container", ""),
             "categories": execution.get("categories", []),
