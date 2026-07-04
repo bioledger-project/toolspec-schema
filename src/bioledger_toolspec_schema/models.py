@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 SPEC_VERSION = "0.1"
 
@@ -54,34 +54,84 @@ class FileFormat:
 class ToolInput(BaseModel):
     """A typed input to a tool (file or directory)."""
 
-    name: str = ""  # identifier for this input (used as dict key internally)
-    type: ParamType = ParamType.FILE
-    format: str = "any"  # free-form string, not enum
-    required: bool = True
-    description: str = ""
+    name: str = Field(
+        default="",
+        description="Identifier for this input (used as the dict key internally).",
+    )
+    type: ParamType = Field(
+        default=ParamType.FILE,
+        description="`file` or `directory`.",
+    )
+    format: str = Field(
+        default="any",
+        description=(
+            "Free-form string, not an enum. `any` is accepted but triggers a "
+            "validation warning because it makes tool chaining harder."
+        ),
+    )
+    required: bool = Field(
+        default=True,
+        description=(
+            "If false, BioLedger may omit this input from the command; the "
+            "template must handle that (usually via Jinja conditionals)."
+        ),
+    )
+    description: str = Field(
+        default="", description="Shown to the LLM and in the UI."
+    )
 
 
 class ToolParameter(BaseModel):
     """A configurable parameter (not a file)."""
 
-    name: str = ""  # identifier for this parameter (used as dict key internally)
-    type: ParamType
-    default: str | int | float | bool | None = None
-    required: bool = False
-    description: str = ""
-    min: int | float | None = None
-    max: int | float | None = None
-    options: list[str] | None = None  # for SELECT type
+    name: str = Field(
+        default="",
+        description="Identifier for this parameter (used as the dict key internally).",
+    )
+    type: ParamType = Field(
+        description=(
+            "One of `string`, `integer`, `float`, `boolean`, `select`. "
+            "`file`/`directory` belong under `inputs`, not `parameters`."
+        )
+    )
+    default: str | int | float | bool | None = Field(
+        default=None, description="Value used when the caller does not override."
+    )
+    required: bool = Field(
+        default=False,
+        description="If true and no default, the CLI/LLM must supply a value.",
+    )
+    description: str = Field(default="", description="Shown to the LLM and in the UI.")
+    min: int | float | None = Field(
+        default=None,
+        description="For `integer`/`float`. The default value is validated against this.",
+    )
+    max: int | float | None = Field(
+        default=None,
+        description="For `integer`/`float`. The default value is validated against this.",
+    )
+    options: list[str] | None = Field(
+        default=None, description="Required when `type: select`; the allowed choices."
+    )
 
 
 class ToolOutput(BaseModel):
     """A typed output from a tool."""
 
-    name: str = ""  # identifier for this output (used as dict key internally)
-    type: ParamType = ParamType.FILE
-    format: str = "any"  # free-form string, not enum
-    pattern: str = ""  # glob for discovery, e.g. "*.html"
-    description: str = ""
+    name: str = Field(
+        default="",
+        description="Identifier for this output (used as the dict key internally).",
+    )
+    type: ParamType = Field(default=ParamType.FILE, description="`file` or `directory`.")
+    format: str = Field(default="any", description="Free-form string, not an enum.")
+    pattern: str = Field(
+        default="",
+        description=(
+            'Glob used for documentation/chaining hints (e.g. "*.html"). BioLedger '
+            "records every file produced in `/output`, so this is advisory only."
+        ),
+    )
+    description: str = Field(default="", description="Shown to the LLM and in the UI.")
 
 
 class SpecStatus(str, Enum):
@@ -116,21 +166,55 @@ class ExecutionSpec(BaseModel):
     via :meth:`ExecutionSpecDraft.to_execution_spec`.
     """
 
-    name: str
-    version: str = ""
-    description: str = ""
-    container: str  # required: Docker image URI
-    command: str  # Jinja2-style template
-    inputs: dict[str, ToolInput] = {}
-    outputs: dict[str, ToolOutput] = {}
-    parameters: dict[str, ToolParameter] = {}
-    categories: list[str] = []
-    status: SpecStatus = SpecStatus.DRAFT
+    name: str = Field(
+        description=(
+            "Unique tool identifier. Used on the CLI (`bioledger tool show <name>`) "
+            "and as the filename."
+        )
+    )
+    version: str = Field(
+        default="",
+        description="Free-form version label. Does not need to match the container tag.",
+    )
+    description: str = Field(
+        default="",
+        description="One-sentence summary. Shown to the LLM when it picks tools.",
+    )
+    container: str = Field(
+        description=(
+            "Fully qualified Docker image URI "
+            "(e.g. `quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0`)."
+        )
+    )
+    command: str = Field(description="Jinja2 command template. See the Guide for variables.")
+    inputs: dict[str, ToolInput] = Field(
+        default_factory=dict, description="Declared input files/directories, keyed by name."
+    )
+    outputs: dict[str, ToolOutput] = Field(
+        default_factory=dict, description="Declared outputs, keyed by name."
+    )
+    parameters: dict[str, ToolParameter] = Field(
+        default_factory=dict,
+        description="Non-file parameters (threads, flags, options), keyed by name.",
+    )
+    categories: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Free-form tags used for grouping and LLM hints "
+            "(e.g. `alignment`, `qc`, `variant_calling`)."
+        ),
+    )
+    status: SpecStatus = Field(
+        default=SpecStatus.DRAFT,
+        description="Set automatically by `validate_spec`; do not hand-set.",
+    )
     # Provenance / attribution (optional)
-    homepage: str = ""  # tool homepage or docs URL
-    citation: str = ""  # how to cite (DOI / paper reference)
-    license: str = ""  # SPDX identifier, e.g. "MIT", "GPL-3.0-or-later"
-    contact: str = ""  # maintainer contact
+    homepage: str = Field(default="", description="Tool homepage or docs URL.")
+    citation: str = Field(default="", description="How to cite (DOI / paper reference).")
+    license: str = Field(
+        default="", description='SPDX identifier, e.g. "MIT", "GPL-3.0-or-later".'
+    )
+    contact: str = Field(default="", description="Maintainer contact.")
 
     _v_inputs = field_validator("inputs", mode="before")(
         classmethod(lambda cls, v: _fill_names_from_keys(v))
@@ -232,37 +316,51 @@ class Conditional(BaseModel):
     """Show/hide fields based on a controlling parameter's value (Galaxy <conditional>).
     Example: param="mode", branches={"advanced": ["kmer_size", "quiet"]}"""
 
-    param: str  # which parameter controls this
-    branches: dict[str, list[str]] = {}  # value → list of field names to show
+    param: str = Field(description="Which parameter controls this.")
+    branches: dict[str, list[str]] = Field(
+        default_factory=dict, description="Value -> list of field names to show."
+    )
 
 
 class InputHint(BaseModel):
     """UI enrichment for a single input or parameter."""
 
-    label: str = ""
-    help: str = ""
-    widget: WidgetType | None = None
-    section: str = ""  # group into collapsible sections
-    advanced: bool = False  # collapsed by default
+    label: str = Field(default="", description="Display label.")
+    help: str = Field(default="", description="Help text shown alongside the field.")
+    widget: WidgetType | None = Field(default=None, description="UI widget to render.")
+    section: str = Field(default="", description="Group into a collapsible section by id.")
+    advanced: bool = Field(default=False, description="Collapsed by default when true.")
 
 
 class RepeatBlock(BaseModel):
     """Galaxy <repeat>-style: user can add N instances of a param group."""
 
-    name: str
-    title: str = ""
-    min: int = 0
-    max: int | None = None
-    fields: list[str] = []  # param names in each repeat instance
+    name: str = Field(description="Repeat block identifier.")
+    title: str = Field(default="", description="Display title.")
+    min: int = Field(default=0, description="Minimum number of instances.")
+    max: int | None = Field(default=None, description="Maximum number of instances.")
+    fields: list[str] = Field(
+        default_factory=list, description="Param names included in each repeat instance."
+    )
 
 
 class InterfaceSpec(BaseModel):
     """Layer 2: optional UI hints. Completely decoupled from execution."""
 
-    hints: dict[str, InputHint] = {}  # keyed by input/param name
-    conditionals: list[Conditional] = []
-    repeats: list[RepeatBlock] = []
-    sections: dict[str, str] = {}  # section_id → display title
+    hints: dict[str, InputHint] = Field(
+        default_factory=dict,
+        description="Per-field UI metadata, keyed by input/parameter name.",
+    )
+    conditionals: list[Conditional] = Field(
+        default_factory=list,
+        description="Show/hide param groups based on a controlling param.",
+    )
+    repeats: list[RepeatBlock] = Field(
+        default_factory=list, description="Allow the user to add N instances of a field group."
+    )
+    sections: dict[str, str] = Field(
+        default_factory=dict, description="Map of section id -> display title."
+    )
 
 
 # --- Combined ToolSpec ---
@@ -271,9 +369,13 @@ class InterfaceSpec(BaseModel):
 class ToolSpec(BaseModel):
     """Complete BioLedger tool specification = Execution + optional Interface."""
 
-    spec_version: str = SPEC_VERSION  # for schema migration
-    execution: ExecutionSpec
-    interface: InterfaceSpec | None = None
+    spec_version: str = Field(
+        default=SPEC_VERSION, description="Schema version, used for migrations."
+    )
+    execution: ExecutionSpec = Field(description="The portable execution contract.")
+    interface: InterfaceSpec | None = Field(
+        default=None, description="Optional UI enrichment. Completely decoupled from execution."
+    )
 
     @property
     def name(self) -> str:
