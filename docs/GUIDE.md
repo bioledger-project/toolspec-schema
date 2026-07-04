@@ -69,6 +69,35 @@ Rules:
 
 At runtime, an input is mounted read-only at `/input/<name>/` inside the container. After the container exits, every file in `/output` is hashed (SHA-256), sized, and added to the `LedgerEntry` as a `FileRef` with `role="output"`. There is no way to "hide" an output file short of not writing it.
 
+### Jinja filters
+
+BioLedger registers three custom Jinja2 filters for path manipulation inside command templates:
+
+| Filter | Usage | Example | Result |
+|--------|-------|---------|--------|
+| `stem` | `{{ path | stem }}` | `"/input/ref.fna.gz" \| stem` | `ref.fna` |
+| `stem` (all) | `{{ path | stem(true) }}` | `"/input/ref.fna.gz" \| stem(true)` | `ref` |
+| `basename` | `{{ path | basename }}` | `"/input/ref.fna.gz" \| basename` | `ref.fna.gz` |
+| `splitext` | `{{ path | splitext }}` | `"/input/ref.fna.gz" \| splitext` | `\["/input/ref.fna", ".gz"\]` |
+
+These are useful when a tool requires an output filename derived from an input filename (e.g. `samtools dict -o {{outputs._dir}}/{{inputs.ref_fasta|stem(true)}}.dict {{inputs.ref_fasta}}`).
+
+In Python you can reuse the same rendering environment via:
+
+```python
+from bioledger_toolspec_schema import render_command, get_jinja_env
+
+# Render a command with the canonical filters
+rendered = render_command(
+    "samtools dict -o {{outputs._dir}}/{{inputs.ref|stem(true)}}.dict {{inputs.ref}}",
+    inputs={"ref": "/input/ref/ref.fna.gz"},
+    outputs={"_dir": "/output"},
+)
+
+# Or get the Environment directly
+env = get_jinja_env()
+```
+
 ---
 
 ## Container execution model

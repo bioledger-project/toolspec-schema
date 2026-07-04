@@ -1,5 +1,6 @@
 """Tool specification models, validation, and local registry."""
 
+from .filters import get_jinja_env, render_command
 from .index import build_index as build_toolspec_index
 from .index import write_index as write_toolspec_index
 from .load import dump_spec_yaml, load_spec, save_spec
@@ -37,4 +38,6 @@ __all__ = [
     "load_spec",
     "save_spec",
     "dump_spec_yaml",
+    "render_command",
+    "get_jinja_env",
 ]

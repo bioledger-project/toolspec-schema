@@ -19,9 +19,9 @@ the rest of the BioLedger application stack.
 
 - The current `bioledger.toolspec` subpackage has no `from bioledger.*`
   imports, so it can be lifted out cleanly.
-- Asset repos (e.g. `bioledger-toolspec-library`) only need pydantic + pyyaml
-  to validate specs — they should not have to install all of BioLedger's
-  application dependencies (pydantic-ai, httpx, isatools, rich, etc.).
+- Asset repos (e.g. `bioledger-toolspec-library`) only need pydantic + pyyaml +
+  jinja2 to validate and render specs — they should not have to install all of
+  BioLedger's application dependencies (pydantic-ai, httpx, isatools, rich, etc.).
 - A standalone package gives the schema its own version cadence, changelog,
   and PyPI identity.
 
@@ -62,6 +62,7 @@ from bioledger_toolspec_schema import (
     validate_spec, validate_execution, validate_interface,
     Severity, ValidationIssue, ValidationResult,
     load_spec, dump_spec_yaml, save_spec,
+    render_command, get_jinja_env,
     SPEC_VERSION,
 )
 ```
