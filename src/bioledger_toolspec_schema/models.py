@@ -142,6 +142,14 @@ class SpecStatus(str, Enum):
     ENRICHED = "enriched"  # has UI layer + tested
 
 
+class ExecutionMode(str, Enum):
+    """How a tool run should be dispatched by default. A hint only — the
+    caller (user or agent) may always override it for a specific run."""
+
+    BLOCKING = "blocking"  # wait for the run to finish before returning
+    ASYNC = "async"  # submit and return immediately; poll for completion
+
+
 def _fill_names_from_keys(value: Any) -> Any:
     """Allow YAML/JSON authors to omit redundant ``name`` fields when the
     collection key already names the item. ``{reads: {format: fastq}}`` becomes
@@ -208,6 +216,16 @@ class ExecutionSpec(BaseModel):
         default=SpecStatus.DRAFT,
         description="Set automatically by `validate_spec`; do not hand-set.",
     )
+    suggested_mode: ExecutionMode = Field(
+        default=ExecutionMode.BLOCKING,
+        description=(
+            "Default dispatch mode for runs of this tool — a hint, not a "
+            "constraint. Set to 'async' for long-running tools (hours) so "
+            "the caller defaults to submit-and-poll instead of blocking. "
+            "The user/agent invoking the tool may always override this "
+            "per-run."
+        ),
+    )
     # Provenance / attribution (optional)
     homepage: str = Field(default="", description="Tool homepage or docs URL.")
     citation: str = Field(default="", description="How to cite (DOI / paper reference).")
@@ -255,6 +273,7 @@ class ExecutionSpecDraft(BaseModel):
     parameters: list[ToolParameter] = []
     categories: list[str] = []
     status: SpecStatus = SpecStatus.DRAFT
+    suggested_mode: ExecutionMode = ExecutionMode.BLOCKING
     # Provenance / attribution (optional)
     homepage: str = ""
     citation: str = ""
@@ -273,6 +292,7 @@ class ExecutionSpecDraft(BaseModel):
             parameters={p.name: p for p in self.parameters},
             categories=list(self.categories),
             status=self.status,
+            suggested_mode=self.suggested_mode,
             homepage=self.homepage,
             citation=self.citation,
             license=self.license,
@@ -292,6 +312,7 @@ class ExecutionSpecDraft(BaseModel):
             parameters=list(spec.parameters.values()),
             categories=list(spec.categories),
             status=spec.status,
+            suggested_mode=spec.suggested_mode,
             homepage=spec.homepage,
             citation=spec.citation,
             license=spec.license,

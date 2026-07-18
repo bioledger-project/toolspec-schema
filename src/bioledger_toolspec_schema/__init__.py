@@ -5,6 +5,7 @@ from .index import build_index as build_toolspec_index
 from .index import write_index as write_toolspec_index
 from .load import dump_spec_yaml, load_spec, save_spec
 from .models import (
+    ExecutionMode,
     ExecutionSpec,
     ExecutionSpecDraft,
     FileFormat,
@@ -19,6 +20,7 @@ from .models import (
 from .validate import Severity, ValidationIssue, ValidationResult, validate_spec
 
 __all__ = [
+    "ExecutionMode",
     "ExecutionSpec",
     "ExecutionSpecDraft",
     "FileFormat",
