@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
 SPEC_VERSION = "0.1"
+
+ExecutorType = Literal["docker", "conda", "nextflow", "snakemake", "galaxy"]
+"""What runs this tool? Broad set: includes docker, conda, and all workflow engines.
+Used on ExecutionSpec.executors. Extensible in the future (e.g. "podman", "apptainer")."""
 
 
 class ParamType(str, Enum):
@@ -78,6 +82,15 @@ class ToolInput(BaseModel):
     )
     description: str = Field(
         default="", description="Shown to the LLM and in the UI."
+    )
+    collection: bool = Field(
+        default=False,
+        description=(
+            "If true, this input accepts a collection (glob, manifest, or "
+            "ledger-sourced file list) instead of a single file. Used by "
+            "generate() to create scatter channels and by submit_spec() to "
+            "pass collections directly to workflow toolspecs for native scatter."
+        ),
     )
 
 
@@ -189,10 +202,31 @@ class ExecutionSpec(BaseModel):
         description="One-sentence summary. Shown to the LLM when it picks tools.",
     )
     container: str = Field(
+        default="",
         description=(
             "Fully qualified Docker image URI "
-            "(e.g. `quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0`)."
-        )
+            "(e.g. `quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0`). "
+            "Optional when conda_deps is set or when executors contains only "
+            "engine types (nextflow/snakemake/galaxy). Mutually exclusive with "
+            "conda_deps."
+        ),
+    )
+    executors: list[ExecutorType] = Field(
+        default_factory=lambda: ["docker"],
+        description=(
+            "How this tool can be executed. Defaults to ['docker']. "
+            "At most one engine executor (nextflow/snakemake/galaxy) per "
+            "toolspec — command syntax is engine-specific. docker/conda may "
+            "coexist with each other and with one engine executor."
+        ),
+    )
+    conda_deps: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Conda package dependencies (e.g. ['samtools=1.17']). Mutually "
+            "exclusive with container. When set, the container image is "
+            "auto-derived via mulled-hash/biocontainers lookup."
+        ),
     )
     command: str = Field(description="Jinja2 command template. See the Guide for variables.")
     inputs: dict[str, ToolInput] = Field(
@@ -266,7 +300,9 @@ class ExecutionSpecDraft(BaseModel):
     name: str
     version: str = ""
     description: str = ""
-    container: str
+    container: str = ""
+    executors: list[ExecutorType] = []
+    conda_deps: list[str] = []
     command: str
     inputs: list[ToolInput] = []
     outputs: list[ToolOutput] = []
@@ -286,6 +322,8 @@ class ExecutionSpecDraft(BaseModel):
             version=self.version,
             description=self.description,
             container=self.container,
+            executors=list(self.executors) if self.executors else ["docker"],
+            conda_deps=list(self.conda_deps),
             command=self.command,
             inputs={i.name: i for i in self.inputs},
             outputs={o.name: o for o in self.outputs},
@@ -306,6 +344,8 @@ class ExecutionSpecDraft(BaseModel):
             version=spec.version,
             description=spec.description,
             container=spec.container,
+            executors=list(spec.executors),
+            conda_deps=list(spec.conda_deps),
             command=spec.command,
             inputs=list(spec.inputs.values()),
             outputs=list(spec.outputs.values()),

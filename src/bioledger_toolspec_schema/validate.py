@@ -53,13 +53,65 @@ def validate_execution(spec: ExecutionSpec, strict: bool = False) -> ValidationR
     # ERRORS: always block
     if not spec.name:
         result.issues.append(ValidationIssue(Severity.ERROR, "name", "Tool name is required"))
-    if not spec.container:
-        result.issues.append(
-            ValidationIssue(Severity.ERROR, "container", "Container image is required")
-        )
     if not spec.command:
         result.issues.append(
             ValidationIssue(Severity.ERROR, "command", "Command template is required")
+        )
+
+    # Executor validation
+    engine_executors = [e for e in spec.executors if e in ("nextflow", "snakemake", "galaxy")]
+    has_docker = "docker" in spec.executors
+    has_conda = "conda" in spec.executors
+
+    # At most one engine executor per toolspec
+    if len(engine_executors) > 1:
+        result.issues.append(
+            ValidationIssue(
+                Severity.ERROR,
+                "executors",
+                f"At most one engine executor allowed (found {engine_executors})",
+            )
+        )
+
+    # container and conda_deps are mutually exclusive
+    if spec.container and spec.conda_deps:
+        result.issues.append(
+            ValidationIssue(
+                Severity.ERROR,
+                "container",
+                "container and conda_deps are mutually exclusive",
+            )
+        )
+
+    # docker executor requires container or conda_deps
+    if has_docker and not spec.container and not spec.conda_deps:
+        result.issues.append(
+            ValidationIssue(
+                Severity.ERROR,
+                "executors",
+                "docker executor requires either container or conda_deps",
+            )
+        )
+
+    # conda executor requires conda_deps
+    if has_conda and not spec.conda_deps:
+        result.issues.append(
+            ValidationIssue(
+                Severity.ERROR,
+                "executors",
+                "conda executor requires conda_deps",
+            )
+        )
+
+    # engine executors should not have container or conda_deps
+    if engine_executors and (spec.container or spec.conda_deps):
+        result.issues.append(
+            ValidationIssue(
+                Severity.ERROR,
+                "executors",
+                "engine executors (nextflow/snakemake/galaxy) must not have "
+                "container or conda_deps — the engine manages its own environment",
+            )
         )
 
     # Check command references match declared inputs/params/outputs
