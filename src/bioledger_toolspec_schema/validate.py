@@ -220,6 +220,35 @@ def validate_execution(spec: ExecutionSpec, strict: bool = False) -> ValidationR
                 )
             )
 
+    # Stem-preservation lint: fan-out-eligible specs (those with at least one
+    # collection input) should have output patterns that preserve the input
+    # stem, so chained fan-out can match outputs to inputs by stem.
+    collection_inputs = [
+        name for name, inp in spec.inputs.items()
+        if getattr(inp, "collection", False)
+    ]
+    if collection_inputs:
+        for out_name, out in spec.outputs.items():
+            pattern = out.pattern or ""
+            # Check if pattern contains a wildcard/stem placeholder
+            has_stem = (
+                "*" in pattern
+                or "{stem}" in pattern
+                or "{sample}" in pattern
+                or "{item}" in pattern
+                or re.search(r"\{[a-zA-Z_]+\}", pattern) is not None
+            )
+            if not has_stem:
+                result.issues.append(
+                    ValidationIssue(
+                        Severity.WARNING,
+                        f"outputs.{out_name}.pattern",
+                        f"Output '{out_name}' pattern '{pattern}' does not preserve "
+                        f"input stem — fan-out chaining requires stem-preserving "
+                        f"output patterns (e.g. '{{stem}}.sorted.bam' or '*.sorted.bam')",
+                    )
+                )
+
     # Update status based on validation
     if strict:
         spec.status = SpecStatus.VALID if result.is_strict_valid else SpecStatus.DRAFT
