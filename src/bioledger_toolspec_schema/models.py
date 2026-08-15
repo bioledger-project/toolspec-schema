@@ -206,7 +206,8 @@ class ExecutionSpec(BaseModel):
         description=(
             "Fully qualified Docker image URI "
             "(e.g. `quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0`). "
-            "Optional when conda_deps is set or when executors contains only "
+            "Optional when conda_deps is set (for either docker auto-derive "
+            "or native conda execution) or when executors contains only "
             "engine types (nextflow/snakemake/galaxy). Mutually exclusive with "
             "conda_deps."
         ),
@@ -224,8 +225,11 @@ class ExecutionSpec(BaseModel):
         default_factory=list,
         description=(
             "Conda package dependencies (e.g. ['samtools=1.17']). Mutually "
-            "exclusive with container. When set, the container image is "
-            "auto-derived via mulled-hash/biocontainers lookup."
+            "exclusive with container. When executor='conda', these are used "
+            "to create a native conda environment (via conda/mamba). When "
+            "executor='docker' (without explicit container), the container "
+            "image is auto-derived from these via mulled-hash/biocontainers "
+            "lookup."
         ),
     )
     command: str = Field(description="Jinja2 command template. See the Guide for variables.")
