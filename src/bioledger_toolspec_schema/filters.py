@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shlex
 
 from jinja2 import Environment
 
@@ -41,6 +42,10 @@ _jinja_env = Environment()
 _jinja_env.filters["basename"] = _basename
 _jinja_env.filters["splitext"] = _splitext
 _jinja_env.filters["stem"] = _stem
+# Shell-escape a value — use at CLI-argument sites, e.g.
+# ``--input {{ inputs.reads | shquote }}``. Do NOT pre-quote mapping values:
+# quoting is positional and would corrupt ``| stem``/``| basename`` and YAML.
+_jinja_env.filters["shquote"] = shlex.quote
 
 
 def render_command(command_template: str, **context: object) -> str:
