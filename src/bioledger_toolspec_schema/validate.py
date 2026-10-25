@@ -114,17 +114,18 @@ def validate_execution(spec: ExecutionSpec, strict: bool = False) -> ValidationR
             )
         )
 
-    # Check command references match declared inputs/params/outputs
-    refs = set(re.findall(r"\{\{(\w+\.\w+)\}\}", spec.command))
+    # Check command references match declared inputs/params/outputs.
+    # The pattern tolerates whitespace ({{ inputs.x }}), filters
+    # ({{ inputs.x | stem }}), and attribute suffixes ({{ outputs.x.path }}).
+    refs = set(re.findall(r"\{\{\s*(inputs|parameters|outputs)\.(\w+)", spec.command))
     input_names = set(spec.inputs.keys())
     param_names = set(spec.parameters.keys())
-    for ref in refs:
-        namespace, name = ref.split(".", 1)
+    for namespace, name in refs:
         if namespace == "inputs" and name not in input_names:
             result.issues.append(
                 ValidationIssue(
                     Severity.ERROR,
-                    f"command.{ref}",
+                    f"command.inputs.{name}",
                     f"Command references undeclared input '{name}'",
                 )
             )
@@ -132,7 +133,7 @@ def validate_execution(spec: ExecutionSpec, strict: bool = False) -> ValidationR
             result.issues.append(
                 ValidationIssue(
                     Severity.ERROR,
-                    f"command.{ref}",
+                    f"command.parameters.{name}",
                     f"Command references undeclared parameter '{name}'",
                 )
             )
