@@ -3,6 +3,7 @@ from bioledger_toolspec_schema.models import (
     ParamType,
     SpecStatus,
     ToolInput,
+    ToolOutput,
 )
 from bioledger_toolspec_schema.validate import Severity, validate_execution
 
@@ -49,4 +50,37 @@ def test_declared_input_with_filter_and_suffix_passes():
     )
     assert not any(
         "undeclared" in i.message for i in result.issues
+    )
+
+
+def test_undeclared_output_ref_is_caught():
+    """{{ outputs.nonexistent.path }} must fail validation."""
+    result = validate_execution(
+        _spec("tool -o {{ outputs.nonexistent.path }} {{ inputs.bam }}")
+    )
+    assert any(
+        i.severity == Severity.ERROR and "nonexistent" in i.message
+        for i in result.issues
+    )
+
+
+def test_declared_output_and_dir_ref_pass():
+    """Declared outputs and the outputs._dir builtin stay valid."""
+    spec = ExecutionSpec(
+        name="t",
+        command="tool -o {{ outputs.real.path }} --dir {{ outputs._dir }}",
+        container="img:1",
+        executors=["docker"],
+        inputs={"bam": ToolInput(type=ParamType.FILE, format="bam")},
+        outputs={
+            "real": ToolOutput(
+                type=ParamType.FILE, format="txt", pattern="real.txt"
+            )
+        },
+        status=SpecStatus.VALID,
+    )
+    result = validate_execution(spec)
+    assert not any(
+        i.severity == Severity.ERROR and "outputs" in i.field
+        for i in result.issues
     )

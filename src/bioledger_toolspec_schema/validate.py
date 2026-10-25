@@ -137,6 +137,18 @@ def validate_execution(spec: ExecutionSpec, strict: bool = False) -> ValidationR
                     f"Command references undeclared parameter '{name}'",
                 )
             )
+        elif (
+            namespace == "outputs"
+            and name != "_dir"
+            and name not in spec.outputs
+        ):
+            result.issues.append(
+                ValidationIssue(
+                    Severity.ERROR,
+                    f"command.outputs.{name}",
+                    f"Command references undeclared output '{name}'",
+                )
+            )
 
     # Parameter validation
     for param_name, param in spec.parameters.items():
