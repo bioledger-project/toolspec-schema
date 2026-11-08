@@ -3,7 +3,7 @@
 A **ToolSpec** is a YAML file that describes how to run a bioinformatics tool inside BioLedger. This guide explains the concepts and conventions; for the exact field list on every model, see the [API Reference](reference.html) (auto-generated from `models.py`, so it's always current).
 
 If you just want to see a working example, look at
-[`examples/hello_bioledger/line_counter.bioledger.yaml`](https://github.com/d-callan/bioledger/blob/main/examples/hello_bioledger/line_counter.bioledger.yaml) in the main `bioledger` repo.
+[`examples/hello_bioledger/line_counter.bioledger.yaml`](https://github.com/bioledger-project/bioledger/blob/master/examples/hello_bioledger/line_counter.bioledger.yaml) in the main `bioledger` repo.
 
 ---
 
@@ -59,11 +59,12 @@ Commands are rendered with [Jinja2](https://jinja.palletsprojects.com/). At rend
 | `{{inputs.<name>}}` | Declared input file | Absolute path **inside the container**: `/input/<name>/<filename>` |
 | `{{parameters.<name>}}` | Declared parameter (or user override) | The parameter value, coerced by Jinja's default stringifier |
 | `{{outputs._dir}}` | Always | `/output` — the directory in the container where output files must be written |
+| `{{outputs.<name>}}` (or `{{outputs.<name>.path}}`) | Declared output | `/output/<pattern>` — the path that output is expected at |
 
 Rules:
 
-1. **Every `{{inputs.X}}` and `{{parameters.X}}` must match a declared field**, or validation emits an ERROR.
-2. `{{outputs._dir}}` is the only supported output-side template variable today. Write all outputs there; BioLedger discovers every file in `/output` after the run and records them.
+1. **Every `{{inputs.X}}`, `{{parameters.X}}`, and `{{outputs.X}}` must match a declared field**, or validation emits an ERROR. References with filters (`{{inputs.x | stem}}`) and attribute suffixes (`{{outputs.x.path}}`) are recognized too.
+2. Write all outputs under `{{outputs._dir}}`; BioLedger discovers every file in `/output` after the run and records them. `{{outputs.X}}` refs are for tools that must name an output path explicitly (e.g. `-o {{outputs.report}}`).
 3. Multi-line commands should use YAML block scalars (`>-` or `|`) so quoting stays readable.
 4. The rendered string is passed through `shlex.split`; if that fails (complex shell syntax), it falls back to `sh -c "<command>"`. If you rely on pipes, redirects, or `$VAR` expansion, `sh -c` will be used automatically.
 
@@ -71,7 +72,7 @@ At runtime, an input is mounted read-only at `/input/<name>/` inside the contain
 
 ### Jinja filters
 
-BioLedger registers three custom Jinja2 filters for path manipulation inside command templates:
+BioLedger registers four custom Jinja2 filters for use inside command templates:
 
 | Filter | Usage | Example | Result |
 |--------|-------|---------|--------|
@@ -79,8 +80,16 @@ BioLedger registers three custom Jinja2 filters for path manipulation inside com
 | `stem` (all) | `{{ path | stem(true) }}` | `"/input/ref.fna.gz" \| stem(true)` | `ref` |
 | `basename` | `{{ path | basename }}` | `"/input/ref.fna.gz" \| basename` | `ref.fna.gz` |
 | `splitext` | `{{ path | splitext }}` | `"/input/ref.fna.gz" \| splitext` | `\["/input/ref.fna", ".gz"\]` |
+| `shquote` | `{{ path | shquote }}` | `"/input/my file.bam" \| shquote` | `'my file.bam'` |
 
-These are useful when a tool requires an output filename derived from an input filename (e.g. `samtools dict -o {{outputs._dir}}/{{inputs.ref_fasta|stem(true)}}.dict {{inputs.ref_fasta}}`).
+The first three are useful when a tool requires an output filename derived
+from an input filename (e.g. `samtools dict -o {{outputs._dir}}/{{inputs.ref_fasta|stem(true)}}.dict {{inputs.ref_fasta}}`).
+
+`shquote` applies `shlex.quote` — use it at CLI-argument sites where a value
+might contain spaces or shell metacharacters (e.g.
+`--input {{inputs.reads | shquote}}`). Do **not** pre-quote mapping values
+yourself: quoting is positional — a literal quote in the value would corrupt
+`| stem` / `| basename` derivations and YAML parsing.
 
 In Python you can reuse the same rendering environment via:
 
@@ -100,7 +109,41 @@ env = get_jinja_env()
 
 ---
 
-## Container execution model
+## Execution model
+
+`execution.executors` declares how the tool may run (`['docker']` by
+default). `docker` and `conda` may coexist, and either may coexist with at
+most **one** engine executor (`nextflow`, `snakemake`, `galaxy`) — command
+syntax is engine-specific, so two engines in one spec is an ERROR.
+
+The environment is provided by exactly one of:
+
+- **`container`** — a fully qualified Docker image URI. Required when
+  `executors` includes `docker` and no `conda_deps` are given. Mutually
+  exclusive with `conda_deps`, and disallowed for engine-only specs
+  (the engine manages its own environment).
+- **`conda_deps`** — conda package specs (e.g. `['samtools=1.17']`). With
+  `executors: [conda]` the env is created natively; with
+  `executors: [docker]` the image is auto-derived via a mulled-hash /
+  BioContainers lookup.
+- **neither** — for engine executors only (`nextflow`/`snakemake`/`galaxy`),
+  which provide their own environment machinery.
+
+`execution.suggested_mode` is an optional dispatch hint: set
+`suggested_mode: async` for long-running tools so callers default to
+submit-and-poll instead of blocking. Per-run overrides are always allowed.
+
+`execution.inputs.<name>.collection: true` marks an input that accepts a
+collection (glob / file list) rather than a single file — used for native
+scatter/fan-out. Validation lints collection inputs whose command template
+drops the file stem (stem preservation keeps chained runs traceable).
+
+Optional provenance/attribution fields on `execution`: `homepage`,
+`citation`, `license`, `contact`.
+
+### Container execution model
+
+When the tool runs in a container (`docker` executor):
 
 ```
 host filesystem                  container filesystem
@@ -144,11 +187,11 @@ Severities:
 
 | Severity | When it fires (examples) | Effect |
 |----------|--------------------------|--------|
-| **ERROR** | Missing `name`/`container`/`command`; command references undeclared `inputs.X`; `default` outside `[min, max]`. | Always blocks; spec is marked `draft`. |
-| **WARNING** | Missing `version`/`description`; no outputs declared; input has `format: any`; `spec_version` differs from current. | Blocks only under `--strict`. |
+| **ERROR** | Missing `name`/`command`; `docker` executor without `container` or `conda_deps`; `container` and `conda_deps` both set; two engine executors; `container`/`conda_deps` on an engine-only spec; command references undeclared `inputs.X`/`outputs.X`/`parameters.X`; `default` outside `[min, max]`; interface hints pointing at undeclared fields. | Always blocks; spec is marked `draft`. |
+| **WARNING** | Missing `version`/`description`; no outputs declared; input has `format: any`; `spec_version` differs from current; collection input whose command drops the file stem. | Blocks only under `--strict`. |
 | **INFO** | Non-well-known format string. | Never blocks. |
 
-After a clean validation, `status` is flipped to `valid` (or `valid` only under `--strict`, depending on mode).
+If validation produces no ERRORs — and no WARNINGs under `--strict` — `validate_spec` flips `status` to `valid`; otherwise `draft`.
 
 ---
 
@@ -241,10 +284,10 @@ You can't declare it optional. Either always produce the file (even if empty) or
 Use a post-step in the command: `&& mv /some/hardcoded/report.html {{outputs._dir}}/`.
 
 **Q: How do I pass multiple files to one input?**
-Today, each `inputs.X` is a single file or directory. For a variadic pattern, declare a `directory`-type input and have the tool glob inside it, or use an `interface.repeats` block to let the UI collect multiple values (the executor will still receive one file per declared input).
+Set `collection: true` on the input — it accepts a glob/manifest/file list and is used for native scatter. Alternatively declare a `directory`-type input and have the tool glob inside it, or use an `interface.repeats` block to let the UI collect multiple values (the executor will still receive one file per declared input).
 
 **Q: Where does `tool_spec_snapshot` come from?**
 At run time, `run_tool` serializes `spec.execution` into the `LedgerEntry`. Even if you later edit the spec, historical runs keep the exact inputs/outputs/command used at the time.
 
 **Q: Can I reuse a tool spec from Galaxy or Nextflow?**
-Yes — `bioledger tool import` accepts `.xml` (Galaxy) and `.nf` (Nextflow) in addition to `.bioledger.yaml`. See [`examples/galaxy_tool_import/`](https://github.com/d-callan/bioledger/tree/main/examples/galaxy_tool_import).
+Yes — `bioledger tool import` accepts `.xml` (Galaxy) and `.nf` (Nextflow) in addition to `.bioledger.yaml`. See [`examples/galaxy_tool_import/`](https://github.com/bioledger-project/bioledger/tree/master/examples/galaxy_tool_import).
